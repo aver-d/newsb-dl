@@ -67,11 +67,12 @@ func saveAudio(data io.Reader, path string) error {
 func queuePath() string {
 	u, err := user.Current()
 	fail(err)
-	return path.Join(u.HomeDir, ".newsbeuter/queue")
+	return path.Join(u.HomeDir, ".newsbeuter", "queue")
 }
 
 func savePath(u *url.URL) string {
-	return downloadDir + "/" + filepath.Base(u.Path)
+	name := filepath.Base(u.Path)
+	return path.Join(downloadDir, name)
 }
 
 type Set map[string]struct{}
