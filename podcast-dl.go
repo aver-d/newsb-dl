@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"os/user"
-	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -67,12 +66,12 @@ func saveAudio(data io.Reader, path string) error {
 func queuePath() string {
 	u, err := user.Current()
 	fail(err)
-	return path.Join(u.HomeDir, ".newsbeuter", "queue")
+	return filepath.Join(u.HomeDir, ".newsbeuter", "queue")
 }
 
 func savePath(u *url.URL) string {
 	name := filepath.Base(u.Path)
-	return path.Join(downloadDir, name)
+	return filepath.Join(downloadDir, name)
 }
 
 type Set map[string]struct{}
