@@ -13,11 +13,10 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
-var downloadDir = "/tmp/audio"
+const defaultDownloadDir = "/tmp/audio"
 
 // Wrap default http.Get with timeout functionality
 var httpGet = func() func(string) (*http.Response, error) {
@@ -30,6 +29,7 @@ var httpGet = func() func(string) (*http.Response, error) {
 
 type Download struct {
 	url       *url.URL
+	dir       string
 	startedAt time.Time
 	data      io.ReadCloser
 	err       error
@@ -43,7 +43,6 @@ func (d *Downloads) Push(dl *Download) {
 
 func fail(err error) {
 	if err != nil {
-		syscall.Rmdir(downloadDir)
 		fmt.Fprintf(os.Stderr, "%s error: %v\n", os.Args[0], err)
 		os.Exit(1)
 	}
@@ -69,9 +68,9 @@ func queuePath(program string) string {
 	return filepath.Join(u.HomeDir, "."+program, "queue")
 }
 
-func savePath(u *url.URL) string {
+func savePath(dir string, u *url.URL) string {
 	name := filepath.Base(u.Path)
-	return filepath.Join(downloadDir, name)
+	return filepath.Join(dir, name)
 }
 
 type Set map[string]struct{}
@@ -125,7 +124,7 @@ func downloadByHost(downloads []*Download, results chan *Download, wg *sync.Wait
 		case r.StatusCode != http.StatusOK:
 			dl.err = errors.New(fmt.Sprintf("HTTP status: %v", r.Status))
 		default:
-			dl.err = saveAudio(r.Body, savePath(dl.url))
+			dl.err = saveAudio(r.Body, savePath(dl.dir, dl.url))
 		}
 		if r != nil {
 			r.Body.Close()
@@ -150,12 +149,12 @@ func report(dl *Download, n, total int) {
 
 // Download all resources in url list
 // Max of one connection per host
-func downloadAll(urls []*url.URL) chan *Download {
+func downloadAll(urls []*url.URL, dir string) chan *Download {
 	// group by host first
 	hosts := map[string]Downloads{}
 	for _, u := range urls {
 		host := hosts[u.Host]
-		host.Push(&Download{url: u})
+		host.Push(&Download{url: u, dir: dir})
 		hosts[u.Host] = host
 	}
 	wg := &sync.WaitGroup{}
@@ -178,24 +177,24 @@ func mkdir(dir string) {
 }
 
 func main() {
+	dir := defaultDownloadDir
 	if len(os.Args) > 1 {
-		downloadDir = os.Args[1]
+		dir = os.Args[1]
 	}
-	mkdir(downloadDir)
+	mkdir(dir)
 	urls, queue := readUrls()
 	if len(urls) == 0 {
 		fmt.Println("Nothing queued")
-		syscall.Rmdir(downloadDir)
 		return
 	}
 	for _, url := range urls {
 		fmt.Println("Queued:", url)
 	}
-	fmt.Printf("Downloading to %v ...\n", downloadDir)
+	fmt.Printf("Downloading to %v ...\n", dir)
 
 	failures := Downloads{}
 	n := 1
-	for dl := range downloadAll(urls) {
+	for dl := range downloadAll(urls, dir) {
 		if dl.err != nil {
 			failures.Push(dl)
 		}
@@ -208,5 +207,4 @@ func main() {
 		fmt.Fprintln(f, dl.url)
 	}
 	fail(f.Close())
-	syscall.Rmdir(downloadDir)
 }
