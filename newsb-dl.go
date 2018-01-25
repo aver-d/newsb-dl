@@ -140,11 +140,11 @@ func report(dl *Download, n, total int) {
 	if dl.err == nil {
 		duration := time.Now().Sub(dl.startedAt).Round(time.Second)
 		fmt.Printf("Ok: %v duration\n", duration)
-		if n != total {
-			fmt.Println()
-		}
 	} else {
 		fmt.Printf("Error: %v\n", dl.err)
+	}
+	if n != total {
+		fmt.Println()
 	}
 }
 
