@@ -63,10 +63,10 @@ func saveAudio(data io.Reader, path string) error {
 	return err
 }
 
-func queuePath() string {
+func queuePath(program string) string {
 	u, err := user.Current()
 	fail(err)
-	return filepath.Join(u.HomeDir, ".newsbeuter", "queue")
+	return filepath.Join(u.HomeDir, "."+program, "queue")
 }
 
 func savePath(u *url.URL) string {
@@ -84,9 +84,14 @@ func (set Set) Has(s string) bool {
 	return found
 }
 
-func readUrls(urlspath string) []*url.URL {
-	f, err := os.Open(urlspath)
-	fail(err)
+func readUrls() ([]*url.URL, string) {
+	path := queuePath("newsboat")
+	f, err := os.Open(path)
+	if err != nil {
+		path = queuePath("newsbeuter")
+		f, err = os.Open(path)
+		fail(err)
+	}
 	defer f.Close()
 	scan := bufio.NewScanner(f)
 	urls := []*url.URL{}
@@ -107,7 +112,7 @@ func readUrls(urlspath string) []*url.URL {
 		urls = append(urls, u)
 	}
 	fail(scan.Err())
-	return urls
+	return urls, path
 }
 
 func downloadByHost(downloads []*Download, results chan *Download, wg *sync.WaitGroup) {
@@ -177,9 +182,7 @@ func main() {
 		downloadDir = os.Args[1]
 	}
 	mkdir(downloadDir)
-	queue := queuePath()
-
-	urls := readUrls(queue)
+	urls, queue := readUrls()
 	if len(urls) == 0 {
 		fmt.Println("Nothing queued")
 		syscall.Rmdir(downloadDir)
