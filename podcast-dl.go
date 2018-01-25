@@ -123,7 +123,7 @@ func downloadByHost(downloads []*Download, results chan *Download, wg *sync.Wait
 		case err != nil:
 			dl.err = err
 		case r.StatusCode != http.StatusOK:
-			dl.err = errors.New(fmt.Sprintf("HTTP status: %d", r.Status))
+			dl.err = errors.New(fmt.Sprintf("HTTP status: %v", r.Status))
 		default:
 			dl.err = saveAudio(r.Body, savePath(dl.url))
 		}
