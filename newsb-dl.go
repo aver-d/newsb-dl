@@ -151,6 +151,14 @@ func mkdir(dir string) {
 	fail(err)
 }
 
+func openAppend(path string) (io.WriteCloser, error) {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return os.Create(path)
+	}
+	return f, err
+}
+
 func rewriteQueue(path string, results Downloads) {
 	successes := Set{}
 	for _, dl := range results {
@@ -205,6 +213,37 @@ func readQueue() ([]*QueueEntry, string) {
 	return entries, path
 }
 
+func newsbdlDir() string {
+	u, err := user.Current()
+	fail(err)
+	dir := filepath.Join(u.HomeDir, ".config", "newsb-dl")
+	mkdir(dir)
+	return dir
+}
+
+func logPath() string {
+	return filepath.Join(newsbdlDir(), "log")
+}
+
+func log(results Downloads) {
+	onezero := map[bool]uint8{
+		true:  1,
+		false: 0,
+	}
+	f, err := openAppend(logPath())
+	if err != nil {
+		fmt.Println("Could not open log path:", logPath())
+		return
+	}
+	for _, dl := range results {
+		fmt.Fprintf(f, "%v\t%v\t%v\n",
+			dl.startedAt.Format(time.RFC3339),
+			onezero[dl.err == nil],
+			dl.url)
+	}
+	fail(f.Close())
+}
+
 func main() {
 	dir := defaultDownloadDir
 	if len(os.Args) > 1 {
@@ -229,4 +268,5 @@ func main() {
 		n += 1
 	}
 	rewriteQueue(path, results)
+	log(results)
 }
