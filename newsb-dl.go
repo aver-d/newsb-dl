@@ -29,6 +29,7 @@ var httpGet = func() func(string) (*http.Response, error) {
 
 type Download struct {
 	url       *url.URL
+	entry     string
 	dir       string
 	startedAt time.Time
 	data      io.ReadCloser
@@ -39,6 +40,11 @@ type Downloads []*Download
 
 func (d *Downloads) Push(dl *Download) {
 	*d = append(*d, dl)
+}
+
+type QueueEntry struct {
+	url   *url.URL
+	entry string
 }
 
 func fail(err error) {
@@ -83,37 +89,6 @@ func (set Set) Has(s string) bool {
 	return found
 }
 
-func readUrls() ([]*url.URL, string) {
-	path := queuePath("newsboat")
-	f, err := os.Open(path)
-	if err != nil {
-		path = queuePath("newsbeuter")
-		f, err = os.Open(path)
-		fail(err)
-	}
-	defer f.Close()
-	scan := bufio.NewScanner(f)
-	urls := []*url.URL{}
-	urlset := Set{}
-	for scan.Scan() {
-		line := strings.TrimSpace(scan.Text())
-		if line == "" {
-			continue
-		}
-		urlstr := strings.Fields(line)[0]
-		// ignore duplicate downloads
-		if urlset.Has(urlstr) {
-			continue
-		}
-		urlset.Add(urlstr)
-		u, err := url.Parse(urlstr)
-		fail(err)
-		urls = append(urls, u)
-	}
-	fail(scan.Err())
-	return urls, path
-}
-
 func downloadByHost(downloads []*Download, results chan *Download, wg *sync.WaitGroup) {
 	for _, dl := range downloads {
 		dl.startedAt = time.Now()
@@ -149,13 +124,13 @@ func report(dl *Download, n, total int) {
 
 // Download all resources in url list
 // Max of one connection per host
-func downloadAll(urls []*url.URL, dir string) chan *Download {
+func downloadAll(entries []*QueueEntry, dir string) chan *Download {
 	// group by host first
 	hosts := map[string]Downloads{}
-	for _, u := range urls {
-		host := hosts[u.Host]
-		host.Push(&Download{url: u, dir: dir})
-		hosts[u.Host] = host
+	for _, e := range entries {
+		host := hosts[e.url.Host]
+		host.Push(&Download{url: e.url, entry: e.entry, dir: dir})
+		hosts[e.url.Host] = host
 	}
 	wg := &sync.WaitGroup{}
 	results := make(chan *Download)
@@ -176,35 +151,82 @@ func mkdir(dir string) {
 	fail(err)
 }
 
+func rewriteQueue(path string, results Downloads) {
+	successes := Set{}
+	for _, dl := range results {
+		if dl.err == nil {
+			successes.Add(dl.entry)
+		}
+	}
+	f, err := os.OpenFile(path, os.O_RDWR, 0600)
+	fail(err)
+	scan := bufio.NewScanner(f)
+	keep := []string{}
+	for scan.Scan() {
+		line := strings.TrimSpace(scan.Text())
+		if !successes.Has(line) {
+			keep = append(keep, line)
+		}
+	}
+	fail(scan.Err())
+	fail(f.Truncate(0))
+	_, err = f.Seek(0, 0)
+	fail(err)
+	for _, line := range keep {
+		fmt.Fprintln(f, line)
+	}
+	fail(f.Close())
+}
+
+func readQueue() ([]*QueueEntry, string) {
+	path := queuePath("newsboat")
+	f, err := os.Open(path)
+	if err != nil {
+		path = queuePath("newsbeuter")
+		f, err = os.Open(path)
+		fail(err)
+	}
+	defer f.Close()
+	scan := bufio.NewScanner(f)
+	entries := []*QueueEntry{}
+	urlset := Set{}
+	for scan.Scan() {
+		line := strings.TrimSpace(scan.Text())
+		urlstr := strings.Fields(line)[0]
+		if urlstr == "" || urlset.Has(urlstr) {
+			continue
+		}
+		urlset.Add(urlstr)
+		u, err := url.Parse(urlstr)
+		fail(err)
+		entries = append(entries, &QueueEntry{u, line})
+	}
+	fail(scan.Err())
+	return entries, path
+}
+
 func main() {
 	dir := defaultDownloadDir
 	if len(os.Args) > 1 {
 		dir = os.Args[1]
 	}
 	mkdir(dir)
-	urls, queue := readUrls()
-	if len(urls) == 0 {
+	entries, path := readQueue()
+	if len(entries) == 0 {
 		fmt.Println("Nothing queued")
 		return
 	}
-	for _, url := range urls {
-		fmt.Println("Queued:", url)
+	for _, entry := range entries {
+		fmt.Println("Queued:", entry.url)
 	}
 	fmt.Printf("Downloading to %v ...\n", dir)
 
-	failures := Downloads{}
+	results := []*Download{}
 	n := 1
-	for dl := range downloadAll(urls, dir) {
-		if dl.err != nil {
-			failures.Push(dl)
-		}
-		report(dl, n, len(urls))
+	for dl := range downloadAll(entries, dir) {
+		report(dl, n, len(entries))
+		results = append(results, dl)
 		n += 1
 	}
-	f, err := os.Create(queue)
-	fail(err)
-	for _, dl := range failures {
-		fmt.Fprintln(f, dl.url)
-	}
-	fail(f.Close())
+	rewriteQueue(path, results)
 }
