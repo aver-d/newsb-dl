@@ -244,12 +244,34 @@ func log(results Downloads) {
 	fail(f.Close())
 }
 
-func main() {
-	dir := defaultDownloadDir
-	if len(os.Args) > 1 {
-		dir = os.Args[1]
+func usage(exitcode int) {
+	message := "Usage: newsb-dl [dir]"
+	var stream = os.Stderr
+	if exitcode == 0 {
+		stream = os.Stdout
 	}
-	mkdir(dir)
+	fmt.Fprintln(stream, message)
+	os.Exit(exitcode)
+}
+
+func main() {
+	var dir string
+	args := os.Args[1:]
+	n := len(args)
+	switch {
+	case n == 0:
+		dir = defaultDownloadDir
+		mkdir(dir)
+	case n == 1 && (args[0] == "--help" || args[0] == "-h"):
+		usage(0)
+	case n == 1:
+		dir = args[0]
+		_, err := os.Stat(dir)
+		fail(err)
+	default:
+		usage(1)
+	}
+
 	entries, path := readQueue()
 	if len(entries) == 0 {
 		fmt.Println("Nothing queued")
@@ -261,11 +283,11 @@ func main() {
 	fmt.Printf("Downloading to %v ...\n", dir)
 
 	results := []*Download{}
-	n := 1
+	count := 1
 	for dl := range downloadAll(entries, dir) {
-		report(dl, n, len(entries))
+		report(dl, count, len(entries))
 		results = append(results, dl)
-		n += 1
+		count += 1
 	}
 	rewriteQueue(path, results)
 	log(results)
