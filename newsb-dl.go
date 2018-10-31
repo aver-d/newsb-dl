@@ -266,8 +266,11 @@ func main() {
 		usage(0)
 	case n == 1:
 		dir = args[0]
-		_, err := os.Stat(dir)
+		stat, err := os.Stat(dir)
 		fail(err)
+		if !stat.IsDir() {
+			fail(fmt.Errorf("Not a directory: %s", dir))
+		}
 	default:
 		usage(1)
 	}
