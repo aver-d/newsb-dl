@@ -16,8 +16,6 @@ import (
 	"time"
 )
 
-const defaultDownloadDir = "/tmp/audio"
-
 // Wrap default http.Get with timeout functionality
 var httpGet = func() func(string) (*http.Response, error) {
 	dial := &net.Dialer{Timeout: 20 * time.Second}
@@ -245,7 +243,7 @@ func log(results Downloads) {
 }
 
 func usage(exitcode int) {
-	message := "Usage: newsb-dl [dir]"
+	message := "Usage: newsb-dl <dir>"
 	var stream = os.Stderr
 	if exitcode == 0 {
 		stream = os.Stdout
@@ -259,9 +257,6 @@ func main() {
 	args := os.Args[1:]
 	n := len(args)
 	switch {
-	case n == 0:
-		dir = defaultDownloadDir
-		mkdir(dir)
 	case n == 1 && (args[0] == "--help" || args[0] == "-h"):
 		usage(0)
 	case n == 1:
