@@ -52,18 +52,43 @@ func fail(err error) {
 	}
 }
 
-func saveAudio(data io.Reader, path string) error {
-	pathTmp := path + ".part"
-	audio, err := os.Create(pathTmp)
+func saveAudio(data io.Reader, dl *Download) error {
+
+	nextFile := func(path string) (io.WriteCloser, string, error) {
+		base := path
+		n := 1
+		for {
+			file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+			if os.IsExist(err) {
+				path = fmt.Sprintf("%s.%d", base, n)
+				n += 1
+				continue
+			}
+			if err != nil {
+				return nil, "", err
+			}
+			return file, path, nil
+		}
+	}
+	name := filepath.Base(dl.url.Path)
+	pathTemp := filepath.Join(dl.dir, name+".part")
+	pathData := filepath.Join(dl.dir, name)
+
+	fileTemp, pathTemp, err := nextFile(pathTemp)
 	if err != nil {
 		return err
 	}
-	defer audio.Close()
-	_, err = io.Copy(audio, data)
-	if err == nil {
-		err = os.Rename(pathTmp, path)
+	defer fileTemp.Close()
+	fileData, pathData, err := nextFile(pathData)
+	if err != nil {
+		return err
 	}
-	return err
+	defer fileData.Close()
+	_, err = io.Copy(fileTemp, data)
+	if err != nil {
+		return err
+	}
+	return os.Rename(pathTemp, pathData)
 }
 
 func queuePath(program string) string {
@@ -97,7 +122,7 @@ func downloadByHost(downloads []*Download, results chan *Download, wg *sync.Wait
 		case r.StatusCode != http.StatusOK:
 			dl.err = errors.New(fmt.Sprintf("HTTP status: %v", r.Status))
 		default:
-			dl.err = saveAudio(r.Body, savePath(dl.dir, dl.url))
+			dl.err = saveAudio(r.Body, dl)
 		}
 		if r != nil {
 			r.Body.Close()
