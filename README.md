@@ -8,5 +8,4 @@ A log of downloads is kept at `~/.config/newsb-dl/log`. The log contains tab-sep
 
 Usage:
 
-
-    newsb-dl [dir]
+    newsb-dl <dir>
